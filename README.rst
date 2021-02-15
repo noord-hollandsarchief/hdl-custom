@@ -37,6 +37,7 @@ private key, and will be used for the log files and result files::
 Then, in the container's Bash prompt that is shown::
 
     ./hdl-custom.py --index 312 --prefix 21.12102 --quiet count
+    ./hdl-custom.py --index 312 --prefix 21.12102 handle contact
     ./hdl-custom.py --index 312 --prefix 21.12102 handle 00D1374FE3EEAE54EDD8D42B7E42CB1F
 
 .. _EPIC PID - New users: https://servicedesk.surfsara.nl/wiki/display/WIKI/EPIC+PID+-+New+users
@@ -124,8 +125,10 @@ Getting a single handle
 Downloading a list of all handles
 ---------------------------------
 
-When getting a list of handles, one really only gets the handles (in upper case) without any additional details. Note
-that `the Wiki`_ says:
+When getting a list of handles, one really only gets the handles (in upper case) without any additional details. It also
+includes some special administrative handles, ``<prefix>/ADMIN``, ``CONTACT``, ``EPIC_HEALTHCHECK`` and ``USER01``.
+
+Note that `the Wiki`_ says:
 
     Note: Please do NOT list more than 10.000 handles at a time. Otherwise the handle server will be overflowed!
 
@@ -154,6 +157,18 @@ by the handle's name:
         35,856  21.12102/00D137CF-DB52-5112-861E-539B39DDABA1
         35,857  21.12102/00D13E1C2D4945A39C53998B907342B4
            ...  ...
+     8,992,901  21.12102/ADFFFB3B9BB8463DB397F270EB337B7B
+     8,992,902  21.12102/ADMIN
+     8,992,903  21.12102/AE0004D1309D4624A164622CBA959530
+           ...  ...
+    10,494,005  21.12102/CFFFFFBEFC0F44748C0C752895D042CF
+    10,494,006  21.12102/CONTACT
+    10,494,007  21.12102/D000003DCF8D41D5A8DBEA8CDF6E4CA7
+           ...  ...
+    11,939,192  21.12102/EFFFFEB9940D4D42B739B71F347BD321
+    11,939,193  21.12102/EPIC_HEALTHCHECK
+    11,939,194  21.12102/F00000A6233E413890A404E634CA7388
+           ...  ...
     12,665,097  21.12102/NL-HLMNHA_1083_488_0073.JPG
     12,665,098  21.12102/NL-HLMNHA_1126_228813_0001.PDF
     12,665,099  21.12102/NL-HLMNHA_1126_555528_0001.PDF
@@ -169,7 +184,6 @@ by the handle's name:
     12,667,422  21.12102/NL-HLMNHA_130_1_0001.JPG
     12,667,423  21.12102/NL-HLMNHA_130_1_0002.JPG
            ...  ...
-    13,230,843  21.12102/NL-HLMNHA_88_377_0861.JPG
     13,230,844  21.12102/NL-HLMNHA_88_377_0862.JPG
     13,230,845  21.12102/NL-HLMNHA_88_377_0863.JPG
     13,230,846  21.12102/USER01

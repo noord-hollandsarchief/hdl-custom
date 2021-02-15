@@ -26,7 +26,8 @@ def parse_args():
           command to run:
           - `handle`: retrieve details for the given POSTFIX; this may be the same output as the
              public endpoint `https://hdl.handle.net/api/handles/<prefix>/<postfix>?pretty`
-          - `count`: count existing handles on the server
+          - `count`: count existing handles on the server, including special postfixes such as `ADMIN`, `CONTACT`,
+            `EPIC_HEALTHCHECK` and `USER01`
           - `download`: create file with existing handles, each line holding `1-based-counter; prefix/postfix`
           - `add-aliases`: create aliases based on a file, each line holding `new-alias; existing-postfix`
           '''))
