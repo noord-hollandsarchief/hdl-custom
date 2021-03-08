@@ -4,7 +4,8 @@ Handle.Net custom CLI
 
 A basic command line interface for some custom administration for `Handle.Net`_ a.k.a. `EPIC Persistent Identifiers`_.
 
-For common administrative tasks, `Handle.Net's software`_ will likely already provide what you need!
+For common administrative tasks, `Handle.Net's software`_ will likely already provide what you need, and possibly much
+faster too!
 
 .. _Handle.Net: https://www.handle.net/
 .. _EPIC Persistent Identifiers: https://servicedesk.surfsara.nl/wiki/display/WIKI/EPIC+Persistent+Identifiers

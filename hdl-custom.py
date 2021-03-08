@@ -21,15 +21,19 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter,
         description='Utility commands for handle.net EPIC persistent identifiers')
-    parser.add_argument('command', metavar='COMMAND', choices=['handle', 'count', 'download', 'add-aliases'],
+    parser.add_argument('command',
+                        metavar='COMMAND',
+                        choices=['handle', 'handles', 'count', 'download', 'rewrite-aliases'],
                         help=textwrap.dedent('''\
           command to run:
           - `handle`: retrieve details for the given POSTFIX; this may be the same output as the
              public endpoint `https://hdl.handle.net/api/handles/<prefix>/<postfix>?pretty`
+          - `handles`: retrieve details for the given postfixes taken from a file
           - `count`: count existing handles on the server, including special postfixes such as `ADMIN`, `CONTACT`,
             `EPIC_HEALTHCHECK` and `USER01`
           - `download`: create file with existing handles, each line holding `1-based-counter; prefix/postfix`
-          - `add-aliases`: create aliases based on a file, each line holding `new-alias; existing-postfix`
+          - `rewrite-aliases`: rewrite handles based on a file, each line holding `postfix; postfix` where both
+             should already exist as a handle, and where the first will become an alias for the latter
           '''))
     parser.add_argument('postfix', metavar='POSTFIX', nargs='?',
                         help='optional postfix, for a single full handle `<prefix>/<postfix>`')
@@ -49,7 +53,7 @@ def parse_args():
                         help='number of rows to process or pages to download, default 3')
     parser.add_argument('--size', metavar='PAGESIZE', default=10000, type=int,
                         help='page size when downloading paginated data, default 10,000')
-    parser.add_argument('--throttle', metavar='SECONDS', default=10, type=int,
+    parser.add_argument('--throttle', metavar='SECONDS', default=10, type=float,
                         help='number of seconds between requests, default 10')
     parser.add_argument('-l', '--log', help='log file, default `<command>-<yyyymmdd>.log`')
     parser.add_argument('-q', '--quiet', help='reduce output on terminal to be the same as the log',
@@ -62,8 +66,8 @@ def parse_args():
     args.output = args.output or f'{args.command}-{date.today().strftime("%Y%m%d")}.csv'
     args.log = args.log or f'{args.command}-{date.today().strftime("%Y%m%d")}.log'
 
-    # For `add-aliases` default to 1, skipping the CSV header
-    args.start = args.start if args.start is not None else 1 if args.command == 'add-aliases' else 0
+    # For `rewrite-aliases` default to 1, skipping the CSV header
+    args.start = args.start if args.start is not None else 1 if args.command == 'rewrite-aliases' else 0
 
     return args
 
@@ -88,7 +92,7 @@ def setup_logger(args):
     logging.debug(f'Writing INFO logging to `{args.log}`')
 
 
-def start_session(args: {}) -> str:
+def start_session(args: {}):
     """
     See also '14.7 Sessions API' in http://hdl.handle.net/20.1000/113
     """
@@ -131,19 +135,19 @@ def start_session(args: {}) -> str:
         # Make sure to log this to file, just in case this script fails and we want to delete the session
         logging.info(f'Got authorized session; {json.load(f)}')
 
-    return session_id
+    args.session_id = session_id
 
 
-def delete_session(args, session_id: str):
-    headers = {'Authorization': f'Handle sessionId="{session_id}"'}
-    logging.debug(f'Deleting sessionId {session_id}')
+def delete_session(args):
+    headers = {'Authorization': f'Handle sessionId="{args.session_id}"'}
+    logging.debug(f'Deleting sessionId {args.session_id}')
     req = urllib.request.Request(url=f'{args.server}/api/sessions/this', method='DELETE', headers=headers)
     with urllib.request.urlopen(req) as f:
         # Expecting 204 No Content
         logging.debug(f'Got {f.status} {f.reason}')
 
 
-def get_page_of_handles(args, session_id: str, page: int, page_size: int):
+def get_page_of_handles(args, page: int, page_size: int):
     """
     Get a page of existing handles, without any detail about their types or target URLs.
 
@@ -160,7 +164,7 @@ def get_page_of_handles(args, session_id: str, page: int, page_size: int):
     """
     logging.debug(f'Getting handles; page={page}; size={page_size}')
 
-    headers = {'Authorization': f'Handle sessionId="{session_id}"'}
+    headers = {'Authorization': f'Handle sessionId="{args.session_id}"'}
     req = urllib.request.Request(url=f'{args.server}/api/handles?prefix={args.prefix}&page={page}&pageSize={page_size}',
                                  method='GET', headers=headers)
     start_time = monotonic()
@@ -186,7 +190,7 @@ def get_page_of_handles(args, session_id: str, page: int, page_size: int):
     return result
 
 
-def download_handles(args, session_id: str):
+def download_handles(args):
     logging.debug(f'Writing results to `{args.output}`')
     stop = args.start + args.count
 
@@ -194,9 +198,10 @@ def download_handles(args, session_id: str):
         for page in range(args.start, stop):
             # One-based
             first = page * args.size + 1
-            result = get_page_of_handles(args, session_id, page, args.size)
+            result = get_page_of_handles(args, page, args.size)
             for idx, handle in enumerate(result['handles']):
                 counter = first + idx
+                # One-based counter
                 output.write(f'{counter};{handle}\n')
             output.flush()
 
@@ -217,61 +222,125 @@ def download_handles(args, session_id: str):
     logging.debug(f'Done; start page={args.start}; next page={stop}; page size={args.size}; output={args.output}')
 
 
-def count_handles(args, session_id: str):
-    stats = get_page_of_handles(args, session_id, 0, 0)
+def count_handles(args):
+    stats = get_page_of_handles(args, 0, 0)
     logging.info(f'prefix={stats["prefix"]}; count={stats["totalCount"]}')
 
 
-def get_handle(args, session_id: str, postfix: str):
+def get_handle(args, postfix: str):
     """
     Get a single handle. Using ``https://hdl.handle.net/api/handles/<prefix>/<postfix>?pretty`` may be easier.
     """
     logging.debug(f'Getting handle; prefix={args.prefix}; postfix={postfix}')
-    headers = {'Authorization': f'Handle sessionId="{session_id}"'}
+    headers = {'Authorization': f'Handle sessionId="{args.session_id}"'}
     req = urllib.request.Request(url=f'{args.server}/api/handles/{args.prefix}/{postfix}', method='GET',
                                  headers=headers)
     with urllib.request.urlopen(req) as f:
         # We could get an object directly by using `result = json.load(f)`, but logging pure JSON (with double quotes)
         # may help for future parsing of the logs
         response = f.read().decode('utf-8')
-    logging.debug(f'Got handle; handle={response}')
+    logging.info(f'Got handle; handle={response}')
     return json.loads(response)
 
 
-def add_aliases(args, session_id: str):
+def get_handles(args):
+    """
+    Get the full handles based on the postfix in the first column of the CSV input file, and write the results to the
+    CSV output file.
+    """
     logging.debug(f'Loading data from `{args.file}`')
+    logging.debug(f'Writing results to `{args.output}`')
+    stop = args.start + args.count
+
+    with open(args.file) as csv_file, open(args.output, 'a') as output:
+        reader = csv.reader(csv_file, delimiter=';', quotechar='"')
+        line = 0
+        for [postfix, *_] in reader:
+            if line >= args.start:
+                logging.debug(f'line={line}; postfix={postfix}')
+                handle = get_handle(args, postfix)
+                # Zero-based counter, but the first (header) line may be skipped
+                output.write(f'{line};{handle}\n')
+                output.flush()
+                if line < stop - 1:
+                    logging.debug(f'Throttling; sleep={args.throttle}sec')
+                    sleep(args.throttle)
+
+            line = line + 1
+            if line >= stop:
+                break
+
+    logging.debug(f'Done; start={args.start}; next={stop}; output={args.output}; log={args.log}')
+
+
+def rewrite_to_alias(args, postfix: str, target_postfix: str):
+    """
+    Convert the existing handle identified by ``postfix`` to become an ``HS_ALIAS`` to the existing ``target_postfix``.
+    """
+    logging.info(f'Rewriting handle to become alias; prefix={args.prefix}; alias={postfix}; target={target_postfix}')
+    headers = {'Authorization': f'Handle sessionId="{args.session_id}"', 'Content-Type': 'application/json'}
+    data = {
+        'values': [
+            {'index': 1,
+             'type': 'HS_ALIAS',
+             'data': {
+                 'format': 'string',
+                 'value': f'{args.prefix}/{target_postfix}'
+             }}
+        ]
+    }
+    req = urllib.request.Request(url=f'{args.server}/api/handles/{args.prefix}/{postfix}?index=various', method='PUT',
+                                 headers=headers, data=json.dumps(data).encode('utf-8'))
+
+    with urllib.request.urlopen(req) as f:
+        # Expecting 200 OK with something like:
+        #   {
+        #     "responseCode": 1,
+        #     "handle": "21.12102/cc724d36-24b6-4df8-a8e0-f04fac555063"
+        #   }
+        # This will throw 404 Not Found if the handle does not exist yet
+        response = f.read().decode('utf-8')
+    logging.debug(f'Rewrote handle; url=https://hdl.handle.net/{args.prefix}/{postfix}; response={response}')
+
+
+def rewrite_aliases(args):
+    logging.debug(f'Loading data from `{args.file}`')
+    stop = args.start + args.count
 
     with open(args.file) as csv_file:
         reader = csv.reader(csv_file, delimiter=';', quotechar='"')
         line = 0
-        for [new_postfix, existing_postfix, *_] in reader:
+        for [alias_postfix, target_postfix, *_] in reader:
             if line >= args.start:
-                logging.info(f'line={line}; alias={new_postfix}; handle={existing_postfix}')
-                # TODO create an alias, possibly using details from the existing handle
-                handle = get_handle(args, session_id, existing_postfix)
-                logging.error('Not implemented')
+                logging.info(f'line={line}; alias={alias_postfix}; handle={target_postfix}')
+                rewrite_to_alias(args, alias_postfix, target_postfix)
+                if line < stop - 1:
+                    logging.debug(f'Throttling; sleep={args.throttle}sec')
+                    sleep(args.throttle)
 
             line = line + 1
-            if line >= args.start + args.count:
+            if line >= stop:
                 break
 
-        logging.debug('Done')
+    logging.info(f'Done; start={args.start}; next={stop}; log={args.log}')
 
 
 def run():
     args = parse_args()
     setup_logger(args)
-    session_id = start_session(args)
+    start_session(args)
 
     try:
         if args.command == 'count':
-            count_handles(args, session_id=session_id)
+            count_handles(args)
         elif args.command == 'handle':
-            get_handle(args, session_id=session_id, postfix=args.postfix)
+            get_handle(args, postfix=args.postfix)
+        elif args.command == 'handles':
+            get_handles(args)
         elif args.command == 'download':
-            download_handles(args, session_id=session_id)
-        elif args.command == 'add-aliases':
-            add_aliases(args, session_id=session_id)
+            download_handles(args)
+        elif args.command == 'rewrite-aliases':
+            rewrite_aliases(args)
         else:
             logging.error(f'Unsupported command; command={args.command}')
     except KeyboardInterrupt:
@@ -281,7 +350,7 @@ def run():
         logging.error(e)
         raise e
     finally:
-        delete_session(args, session_id=session_id)
+        delete_session(args)
 
 
 if __name__ == '__main__':
