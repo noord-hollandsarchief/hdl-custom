@@ -305,11 +305,11 @@ def rewrite_to_alias(args, postfix: str, target_postfix: str):
 
 def rewrite_aliases(args):
     logging.debug(f'Loading data from `{args.file}`')
+    line = 0
     stop = args.start + args.count
 
     with open(args.file) as csv_file:
         reader = csv.reader(csv_file, delimiter=';', quotechar='"')
-        line = 0
         for [alias_postfix, target_postfix, *_] in reader:
             if line >= args.start:
                 logging.info(f'line={line}; alias={alias_postfix}; handle={target_postfix}')
@@ -322,7 +322,11 @@ def rewrite_aliases(args):
             if line >= stop:
                 break
 
-    logging.info(f'Done; start={args.start}; next={stop}; log={args.log}')
+        else:
+            # Ensure we can tell we've reached EOF even if args.count nicely matches the number of processed lines
+            stop = -1
+
+    logging.info(f'Done; start={args.start}; last={line - 1}; next={stop if stop > -1 else "n/a"}; log={args.log}')
 
 
 def run():
